@@ -1,0 +1,41 @@
+:root {
+  font-family: Inter, system-ui, sans-serif;
+  color: #111827;
+  background: #f3f4f6;
+}
+body {
+  margin: 0;
+}
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px;
+}
+.card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+input, button, select {
+  padding: 10px 12px;
+  margin: 4px 0;
+}
+button {
+  cursor: pointer;
+}
+.row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.column {
+  display: flex;
+  flex-direction: column;
+}
+.nav {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
