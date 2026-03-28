@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: ib-db
+    environment:
+      POSTGRES_DB: internet_banking
+      POSTGRES_USER: bank_user
+      POSTGRES_PASSWORD: bank_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    container_name: ib-backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/internet_banking
+      SPRING_DATASOURCE_USERNAME: bank_user
+      SPRING_DATASOURCE_PASSWORD: bank_pass
+      APP_ADMIN_EMAIL: admin@bank.local
+      APP_ADMIN_PASSWORD: Admin123!
+      APP_MAIL_FROM: no-reply@bank.local
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+
+  frontend:
+    build: ./frontend
+    container_name: ib-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

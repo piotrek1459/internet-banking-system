@@ -1,0 +1,142 @@
+openapi: 3.0.3
+info:
+  title: Internet Banking API
+  version: 0.1.0
+servers:
+  - url: http://localhost:8080/api
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+  /auth/register:
+    post:
+      summary: Register customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Created
+  /auth/login:
+    post:
+      summary: Login step 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: OTP required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+  /auth/verify-otp:
+    post:
+      summary: Login step 2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyOtpRequest'
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+  /me:
+    get:
+      summary: Current user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user profile
+  /customer/accounts:
+    get:
+      summary: Customer accounts
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of accounts
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [email, password, firstName, lastName]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+    LoginResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: OTP_REQUIRED
+        message:
+          type: string
+        otpSessionId:
+          type: string
+          format: uuid
+    VerifyOtpRequest:
+      type: object
+      required: [otpSessionId, otpCode]
+      properties:
+        otpSessionId:
+          type: string
+          format: uuid
+        otpCode:
+          type: string
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: '#/components/schemas/UserDto'
+    UserDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          type: string
+          enum: [ADMIN, EMPLOYEE, CUSTOMER]
+        firstName:
+          type: string
+        lastName:
+          type: string

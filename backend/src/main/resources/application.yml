@@ -1,0 +1,24 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/internet_banking}
+    username: ${SPRING_DATASOURCE_USERNAME:bank_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:bank_pass}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 8080
+
+app:
+  jwt-secret: ${APP_JWT_SECRET:change-me-change-me-change-me-change-me}
+  admin-email: ${APP_ADMIN_EMAIL:admin@bank.local}
+  admin-password: ${APP_ADMIN_PASSWORD:Admin123!}
+  mail-from: ${APP_MAIL_FROM:no-reply@bank.local}

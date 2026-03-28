@@ -1,0 +1,42 @@
+# macOS
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.iml
+
+# Environment and local overrides
+.env
+.env.*
+!.env.example
+
+# Java / Maven (backend)
+backend/target/
+backend/.mvn/
+backend/.classpath
+backend/.project
+backend/.settings/
+
+# Node / Vite (frontend)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+frontend/.cache/
+frontend/.eslintcache
+frontend/cypress/screenshots/
+frontend/cypress/videos/
+
+# Build and temporary files
+tmp/
+temp/
+*.tmp
+
+# Docker local data
+*.pid
+docker-compose.override.yml
