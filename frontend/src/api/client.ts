@@ -1,22 +1,22 @@
+import { mockServer } from './mockServer'
+
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('token')
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(options.headers ?? {}),
+  const headers = new Headers(options.headers)
+
+  if (!headers.has('Content-Type') && options.body) {
+    headers.set('Content-Type', 'application/json')
   }
 
-  const response = await fetch(url, { ...options, headers })
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}))
-    throw new Error(errorBody.message ?? 'Request failed')
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
   }
 
-  if (response.status === 204) {
-    return undefined as T
-  }
-
-  return response.json() as Promise<T>
+  return mockServer.request<T>(url, {
+    method: options.method ?? 'GET',
+    headers,
+    body: options.body,
+  })
 }
 
 export const api = {
