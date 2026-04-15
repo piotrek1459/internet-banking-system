@@ -1,19 +1,26 @@
 openapi: 3.0.3
 info:
   title: Internet Banking API
-  version: 0.1.0
+  version: 1.0.0
+  description: REST API for the Internet Banking System (HZ1_eng project)
 servers:
   - url: http://localhost:8080/api
+
+security: []
+
 paths:
   /health:
     get:
       summary: Health check
+      tags: [Public]
       responses:
         '200':
           description: OK
+
   /auth/register:
     post:
-      summary: Register customer
+      summary: Register new customer
+      tags: [Auth]
       requestBody:
         required: true
         content:
@@ -22,10 +29,14 @@ paths:
               $ref: '#/components/schemas/RegisterRequest'
       responses:
         '201':
-          description: Created
+          description: Customer created
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
   /auth/login:
     post:
-      summary: Login step 1
+      summary: Login step 1 — validate credentials
+      tags: [Auth]
       requestBody:
         required: true
         content:
@@ -34,14 +45,20 @@ paths:
               $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: OTP required
+          description: OTP sent
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '423':
+          $ref: '#/components/responses/Locked'
+
   /auth/verify-otp:
     post:
-      summary: Login step 2
+      summary: Login step 2 — verify OTP, receive JWT
+      tags: [Auth]
       requestBody:
         required: true
         content:
@@ -55,28 +72,359 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /me:
     get:
-      summary: Current user
+      summary: Get current user profile
+      tags: [Authenticated]
       security:
         - bearerAuth: []
       responses:
         '200':
-          description: Current user profile
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /customer/overview:
+    get:
+      summary: Customer dashboard overview
+      tags: [Customer]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Overview data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerOverviewResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /customer/accounts:
     get:
-      summary: Customer accounts
+      summary: List customer accounts
+      tags: [Customer]
       security:
         - bearerAuth: []
       responses:
         '200':
-          description: List of accounts
+          description: Account list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AccountSummary'
+
+  /customer/activity:
+    get:
+      summary: Transaction history
+      tags: [Customer]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Transactions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerActivityResponse'
+
+  /customer/transfers:
+    post:
+      summary: Create a transfer
+      tags: [Customer]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionOk'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /customer/payments:
+    post:
+      summary: Create a bill payment
+      tags: [Customer]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionOk'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /customer/accounts/{accountId}/request-block:
+    post:
+      summary: Request account block
+      tags: [Customer]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionOk'
+
+  /customer/downloads/statement:
+    get:
+      summary: Download account statement as CSV
+      tags: [Customer]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: accountId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: CSV file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadFileResponse'
+
+  /customer/downloads/history:
+    get:
+      summary: Download transaction history as CSV
+      tags: [Customer]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: accountId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: CSV file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadFileResponse'
+
+  /admin/dashboard:
+    get:
+      summary: Admin statistics dashboard
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminDashboardResponse'
+
+  /admin/customers:
+    get:
+      summary: List all customers
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Customer list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AdminCustomerSummary'
+
+  /admin/operations:
+    get:
+      summary: Audit log
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Operations list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OperationRecordDto'
+
+  /admin/security:
+    get:
+      summary: Security queue
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Security data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSecurityResponse'
+
+  /admin/users/{userId}/unlock-access:
+    post:
+      summary: Restore blocked user access
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionOk'
+
+  /admin/accounts/{accountId}/block:
+    post:
+      summary: Block account
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionOk'
+
+  /admin/accounts/{accountId}/unblock:
+    post:
+      summary: Unblock account
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionOk'
+
+  /admin/block-requests/{requestId}/approve:
+    post:
+      summary: Approve block request
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionOk'
+
+  /admin/block-requests/{requestId}/reject:
+    post:
+      summary: Reject block request
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionOk'
+
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid JWT token
+    Forbidden:
+      description: Insufficient role
+    NotFound:
+      description: Resource not found
+    BadRequest:
+      description: Validation error or bad input
+    Locked:
+      description: Account or user is blocked
+    ActionOk:
+      description: Action completed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ActionResponse'
+
   schemas:
     RegisterRequest:
       type: object
@@ -84,20 +432,24 @@ components:
       properties:
         email:
           type: string
+          format: email
         password:
           type: string
         firstName:
           type: string
         lastName:
           type: string
+
     LoginRequest:
       type: object
       required: [email, password]
       properties:
         email:
           type: string
+          format: email
         password:
           type: string
+
     LoginResponse:
       type: object
       properties:
@@ -109,6 +461,7 @@ components:
         otpSessionId:
           type: string
           format: uuid
+
     VerifyOtpRequest:
       type: object
       required: [otpSessionId, otpCode]
@@ -118,6 +471,8 @@ components:
           format: uuid
         otpCode:
           type: string
+          example: "123456"
+
     AuthResponse:
       type: object
       properties:
@@ -125,6 +480,7 @@ components:
           type: string
         user:
           $ref: '#/components/schemas/UserDto'
+
     UserDto:
       type: object
       properties:
@@ -140,3 +496,276 @@ components:
           type: string
         lastName:
           type: string
+        failedLoginAttempts:
+          type: integer
+        isAccessBlocked:
+          type: boolean
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    AccountSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+        accountNumber:
+          type: string
+        iban:
+          type: string
+        currency:
+          type: string
+        balance:
+          type: number
+        status:
+          type: string
+          enum: [ACTIVE, PENDING_BLOCK, BLOCKED]
+
+    TransactionDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        accountId:
+          type: string
+          format: uuid
+        accountName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        type:
+          type: string
+          enum: [TRANSFER, PAYMENT, DEPOSIT]
+        title:
+          type: string
+        description:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string
+        direction:
+          type: string
+          enum: [DEBIT, CREDIT]
+        status:
+          type: string
+          enum: [COMPLETED, PENDING, FAILED]
+        counterparty:
+          type: string
+          nullable: true
+        reference:
+          type: string
+
+    TransferRequest:
+      type: object
+      required: [sourceAccountId, recipientName, recipientAccountNumber, amount, description]
+      properties:
+        sourceAccountId:
+          type: string
+          format: uuid
+        recipientName:
+          type: string
+        recipientAccountNumber:
+          type: string
+        amount:
+          type: number
+          minimum: 0.01
+        description:
+          type: string
+
+    PaymentRequest:
+      type: object
+      required: [sourceAccountId, payeeName, reference, amount]
+      properties:
+        sourceAccountId:
+          type: string
+          format: uuid
+        payeeName:
+          type: string
+        reference:
+          type: string
+        amount:
+          type: number
+          minimum: 0.01
+
+    CustomerOverviewResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/UserDto'
+        totalBalance:
+          type: number
+        activeAccounts:
+          type: integer
+        pendingBlockRequests:
+          type: integer
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountSummary'
+        recentTransactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionDto'
+        alerts:
+          type: array
+          items:
+            type: string
+
+    CustomerActivityResponse:
+      type: object
+      properties:
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountSummary'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionDto'
+
+    DownloadFileResponse:
+      type: object
+      properties:
+        fileName:
+          type: string
+        mimeType:
+          type: string
+        content:
+          type: string
+
+    ActionResponse:
+      type: object
+      properties:
+        message:
+          type: string
+
+    OperationRecordDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        actorName:
+          type: string
+        actorRole:
+          type: string
+        target:
+          type: string
+        type:
+          type: string
+        severity:
+          type: string
+          enum: [INFO, WARNING, CRITICAL, SUCCESS]
+        description:
+          type: string
+
+    BlockRequestDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        accountId:
+          type: string
+          format: uuid
+        customerName:
+          type: string
+        customerEmail:
+          type: string
+        accountNumber:
+          type: string
+        reason:
+          type: string
+        requestedAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [PENDING, APPROVED, REJECTED]
+
+    AdminCustomerSummary:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+        accessStatus:
+          type: string
+          enum: [ACTIVE, BLOCKED]
+        failedLoginAttempts:
+          type: integer
+        blockedAccounts:
+          type: integer
+        pendingBlockRequests:
+          type: integer
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountSummary'
+
+    AdminDashboardResponse:
+      type: object
+      properties:
+        totalCustomers:
+          type: integer
+        totalFunds:
+          type: number
+        blockedUsers:
+          type: integer
+        blockedAccounts:
+          type: integer
+        pendingBlockRequests:
+          type: integer
+        recentCriticalOperations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperationRecordDto'
+
+    AdminSecurityResponse:
+      type: object
+      properties:
+        blockedUsers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminCustomerSummary'
+        pendingRequests:
+          type: array
+          items:
+            $ref: '#/components/schemas/BlockRequestDto'
+        blockedAccounts:
+          type: array
+          items:
+            type: object
+            properties:
+              accountId:
+                type: string
+                format: uuid
+              accountName:
+                type: string
+              accountNumber:
+                type: string
+              customerName:
+                type: string

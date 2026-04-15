@@ -7,35 +7,35 @@ import com.example.banking.repository.OtpSessionRepository;
 import com.example.banking.repository.UserRepository;
 import com.example.banking.security.JwtService;
 import jakarta.persistence.EntityNotFoundException;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.List;
+import java.util.Random;
 import java.util.UUID;
 
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class AuthService {
+
     private final UserRepository userRepository;
     private final OtpSessionRepository otpSessionRepository;
     private final BankAccountRepository bankAccountRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final OperationService operationService;
 
-    public AuthService(UserRepository userRepository,
-                       OtpSessionRepository otpSessionRepository,
-                       BankAccountRepository bankAccountRepository,
-                       PasswordEncoder passwordEncoder,
-                       JwtService jwtService) {
-        this.userRepository = userRepository;
-        this.otpSessionRepository = otpSessionRepository;
-        this.bankAccountRepository = bankAccountRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtService = jwtService;
-    }
-
+    @Transactional
     public void register(RegisterRequest request) {
+        if (userRepository.findByEmail(request.getEmail()).isPresent()) {
+            throw new IllegalArgumentException("Email already registered");
+        }
+
         User user = User.builder()
                 .email(request.getEmail())
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
@@ -48,15 +48,27 @@ public class AuthService {
                 .build();
         userRepository.save(user);
 
+        String accountNumber = "PL" + UUID.randomUUID().toString().replace("-", "").substring(0, 26).toUpperCase();
+        String iban = "PL" + String.format("%026d", Math.abs(accountNumber.hashCode() % (long) 1e26));
+
         bankAccountRepository.save(BankAccount.builder()
-                .accountNumber("PL" + UUID.randomUUID().toString().replace("-", "").substring(0, 26))
+                .accountNumber(accountNumber)
+                .iban(iban)
+                .name("Current Account")
+                .type("Current")
                 .owner(user)
-                .currency("PLN")
+                .currency("EUR")
                 .balance(BigDecimal.ZERO)
-                .status("ACTIVE")
+                .status(BankAccountStatus.ACTIVE)
                 .build());
+
+        operationService.record(user.getEmail(), Role.CUSTOMER,
+                user.getEmail(), OperationType.CUSTOMER_REGISTERED,
+                OperationSeverity.INFO,
+                "New customer registered: " + user.getFirstName() + " " + user.getLastName());
     }
 
+    @Transactional
     public LoginResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new EntityNotFoundException("Invalid credentials"));
@@ -68,17 +80,29 @@ public class AuthService {
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             int attempts = user.getFailedLoginAttempts() + 1;
             user.setFailedLoginAttempts(attempts);
-            if (attempts >= 3) {
+
+            boolean nowLocked = attempts >= 3;
+            if (nowLocked) {
                 user.setAccountStatus(AccountStatus.LOCKED_LOGIN_FAILURE);
             }
             userRepository.save(user);
+
+            operationService.record(user.getEmail(), Role.CUSTOMER,
+                    user.getEmail(), OperationType.LOGIN_FAILURE,
+                    nowLocked ? OperationSeverity.CRITICAL : OperationSeverity.WARNING,
+                    nowLocked
+                            ? "Access blocked after 3 failed login attempts"
+                            : "Failed login attempt " + attempts + "/3");
+
             throw new IllegalArgumentException("Invalid credentials");
         }
 
         user.setFailedLoginAttempts(0);
         userRepository.save(user);
 
-        String otp = "123456"; // starter placeholder
+        String otp = String.format("%06d", new Random().nextInt(1_000_000));
+        log.info("[DEV] OTP for {}: {}", user.getEmail(), otp);
+
         OtpSession session = otpSessionRepository.save(OtpSession.builder()
                 .user(user)
                 .otpCode(otp)
@@ -93,6 +117,7 @@ public class AuthService {
                 .build();
     }
 
+    @Transactional
     public AuthResponse verifyOtp(VerifyOtpRequest request) {
         OtpSession session = otpSessionRepository.findByIdAndUsedFalse(request.getOtpSessionId())
                 .orElseThrow(() -> new EntityNotFoundException("OTP session not found"));
@@ -108,15 +133,17 @@ public class AuthService {
         otpSessionRepository.save(session);
 
         User user = session.getUser();
+        user.setLastLoginAt(Instant.now());
+        userRepository.save(user);
+
+        operationService.record(user.getEmail(), Role.CUSTOMER,
+                user.getEmail(), OperationType.LOGIN_SUCCESS,
+                OperationSeverity.SUCCESS,
+                "User logged in successfully");
+
         return AuthResponse.builder()
                 .token(jwtService.generateToken(user))
                 .user(UserDto.from(user))
                 .build();
-    }
-
-    public List<AccountSummaryDto> findAccountsByUserEmail(String email) {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new EntityNotFoundException("User not found"));
-        return bankAccountRepository.findByOwner(user).stream().map(AccountSummaryDto::from).toList();
     }
 }

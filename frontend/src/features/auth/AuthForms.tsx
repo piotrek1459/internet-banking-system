@@ -94,7 +94,7 @@ export function LoginForm({
           type="info"
           showIcon
           message="Demo notes"
-          description="OTP code is 123456. Customer access is blocked automatically after three failed password attempts."
+          description="OTP code is printed in backend logs. Run: docker compose logs backend | grep 'OTP for'. Customer access is blocked automatically after three failed password attempts."
         />
         {onSwitchToRegister && (
           <Button type="link" onClick={onSwitchToRegister} style={{ paddingLeft: 0 }}>

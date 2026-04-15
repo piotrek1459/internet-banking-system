@@ -22,3 +22,4 @@ app:
   admin-email: ${APP_ADMIN_EMAIL:admin@bank.local}
   admin-password: ${APP_ADMIN_PASSWORD:Admin123!}
   mail-from: ${APP_MAIL_FROM:no-reply@bank.local}
+  seed-demo-data: ${APP_SEED_DEMO_DATA:true}

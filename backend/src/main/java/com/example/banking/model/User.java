@@ -43,6 +43,9 @@ public class User {
     @Column(nullable = false)
     private Instant createdAt;
 
+    @Column
+    private Instant lastLoginAt;
+
     @PrePersist
     void onCreate() {
         if (createdAt == null) createdAt = Instant.now();

@@ -1,26 +1,69 @@
 package com.example.banking.controller;
 
-import com.example.banking.dto.AccountSummaryDto;
-import com.example.banking.service.AuthService;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import com.example.banking.dto.*;
+import com.example.banking.model.User;
+import com.example.banking.service.CustomerService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/customer")
+@RequiredArgsConstructor
 public class CustomerController {
-    private final AuthService authService;
 
-    public CustomerController(AuthService authService) {
-        this.authService = authService;
+    private final CustomerService customerService;
+
+    @GetMapping("/overview")
+    public CustomerOverviewResponse overview(Authentication auth) {
+        return customerService.getOverview(principal(auth));
     }
 
     @GetMapping("/accounts")
-    public List<AccountSummaryDto> accounts(@RequestHeader(value = "X-Demo-User", required = false) String email) {
-        String resolvedEmail = email == null ? "admin@bank.local" : email;
-        return authService.findAccountsByUserEmail(resolvedEmail);
+    public CustomerAccountsResponse accounts(Authentication auth) {
+        return customerService.getAccounts(principal(auth));
+    }
+
+    @GetMapping("/activity")
+    public CustomerActivityResponse activity(Authentication auth) {
+        return customerService.getActivity(principal(auth));
+    }
+
+    @PostMapping("/transfers")
+    public ActionResponse transfer(Authentication auth,
+                                   @Valid @RequestBody TransferRequest request) {
+        return customerService.submitTransfer(principal(auth), request);
+    }
+
+    @PostMapping("/payments")
+    public ActionResponse payment(Authentication auth,
+                                  @Valid @RequestBody PaymentRequest request) {
+        return customerService.submitPayment(principal(auth), request);
+    }
+
+    @PostMapping("/accounts/{accountId}/request-block")
+    public ActionResponse requestBlock(Authentication auth,
+                                       @PathVariable UUID accountId,
+                                       @Valid @RequestBody BlockRequestSubmitRequest request) {
+        return customerService.requestBlock(principal(auth), accountId, request);
+    }
+
+    @GetMapping("/downloads/statement")
+    public DownloadFileResponse downloadStatement(Authentication auth,
+                                                   @RequestParam UUID accountId) {
+        return customerService.downloadStatement(principal(auth), accountId);
+    }
+
+    @GetMapping("/downloads/history")
+    public DownloadFileResponse downloadHistory(Authentication auth,
+                                                 @RequestParam(required = false) UUID accountId) {
+        return customerService.downloadHistory(principal(auth), accountId);
+    }
+
+    private User principal(Authentication auth) {
+        return (User) auth.getPrincipal();
     }
 }

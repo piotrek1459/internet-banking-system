@@ -11,7 +11,10 @@ import java.util.UUID;
 @Builder
 public class AccountSummaryDto {
     private UUID id;
+    private String name;
+    private String type;
     private String accountNumber;
+    private String iban;
     private String currency;
     private BigDecimal balance;
     private String status;
@@ -19,10 +22,13 @@ public class AccountSummaryDto {
     public static AccountSummaryDto from(BankAccount account) {
         return AccountSummaryDto.builder()
                 .id(account.getId())
+                .name(account.getName())
+                .type(account.getType())
                 .accountNumber(account.getAccountNumber())
+                .iban(account.getIban())
                 .currency(account.getCurrency())
                 .balance(account.getBalance())
-                .status(account.getStatus())
+                .status(account.getStatus().name())
                 .build();
     }
 }
