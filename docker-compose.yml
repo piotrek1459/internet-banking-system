@@ -23,6 +23,8 @@ services:
       APP_ADMIN_EMAIL: admin@bank.local
       APP_ADMIN_PASSWORD: Admin123!
       APP_MAIL_FROM: no-reply@bank.local
+      APP_JWT_SECRET: internet-banking-jwt-secret-for-local-dev-only
+      APP_SEED_DEMO_DATA: "true"
     ports:
       - "8080:8080"
     depends_on:

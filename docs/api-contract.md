@@ -1,4 +1,4 @@
-# Frontend/Backend Contract
+# Frontend/Backend API Contract
 
 ## Base URL
 - Backend base path: `/api`
@@ -6,21 +6,16 @@
 - Error shape is standardized.
 
 ## Auth flow
-1. `POST /api/auth/register` creates a customer account.
-2. `POST /api/auth/login` validates email/password.
-3. If valid, backend returns `OTP_REQUIRED` and sends OTP by email.
-4. `POST /api/auth/verify-otp` validates OTP and returns JWT plus current user.
-5. Frontend stores JWT and sends `Authorization: Bearer <token>`.
+1. `POST /api/auth/register` — creates a customer account (HTTP 201).
+2. `POST /api/auth/login` — validates email/password; returns OTP session ID.
+3. Backend generates random 6-digit OTP (logged to console in dev mode).
+4. `POST /api/auth/verify-otp` — validates OTP, returns JWT + UserDto.
+5. Frontend stores JWT in localStorage, sends `Authorization: Bearer <token>`.
 
 ## Roles
-- `ADMIN`
-- `EMPLOYEE`
-- `CUSTOMER`
-
-Frontend uses `user.role` to route:
-- `ADMIN` -> `/admin`
-- `EMPLOYEE` -> `/employee`
-- `CUSTOMER` -> `/customer`
+- `ADMIN` → `/admin/**`
+- `CUSTOMER` → `/customer/**`
+- `EMPLOYEE` → `/employee` (placeholder, future feature)
 
 ## Standard error response
 ```json
@@ -33,109 +28,209 @@ Frontend uses `user.role` to route:
 }
 ```
 
+HTTP status codes:
+- `400` — bad request (validation, wrong password, insufficient balance)
+- `401` — missing / invalid / expired JWT
+- `403` — authenticated but insufficient role
+- `404` — resource not found
+- `423` — account/user is blocked or locked
+
 ## DTOs
 
-### Login request
+### UserDto
 ```json
 {
-  "email": "john@example.com",
-  "password": "Secret123!"
+  "id": "uuid",
+  "email": "alice@bank.local",
+  "role": "CUSTOMER",
+  "firstName": "Alice",
+  "lastName": "Murphy",
+  "failedLoginAttempts": 0,
+  "isAccessBlocked": false,
+  "lastLoginAt": "2026-04-10T10:00:00Z"
 }
 ```
 
-### Login response (step 1)
+### AccountSummary
 ```json
 {
-  "status": "OTP_REQUIRED",
-  "message": "OTP sent to email",
-  "otpSessionId": "9b5f7fd7-56d9-4d18-aab1-7fba77e615cc"
-}
-```
-
-### Verify OTP request
-```json
-{
-  "otpSessionId": "9b5f7fd7-56d9-4d18-aab1-7fba77e615cc",
-  "otpCode": "123456"
-}
-```
-
-### Verify OTP response
-```json
-{
-  "token": "jwt-token-value",
-  "user": {
-    "id": "8b73c0da-ef32-4fdf-a818-c7c07ef7d325",
-    "email": "john@example.com",
-    "role": "CUSTOMER",
-    "firstName": "John",
-    "lastName": "Doe"
-  }
-}
-```
-
-### Register request
-```json
-{
-  "email": "john@example.com",
-  "password": "Secret123!",
-  "firstName": "John",
-  "lastName": "Doe"
-}
-```
-
-### Account summary
-```json
-{
-  "id": "c1f0f6a3-4c2f-42c1-a464-8113c8b68358",
-  "accountNumber": "PL00123456789012345678901234",
-  "currency": "PLN",
-  "balance": 1500.25,
+  "id": "uuid",
+  "name": "Everyday Account",
+  "type": "Current",
+  "accountNumber": "PL10105000997603123456789123",
+  "iban": "IE29AIBK93115212341234",
+  "currency": "EUR",
+  "balance": 8425.18,
   "status": "ACTIVE"
 }
 ```
+Status values: `ACTIVE`, `PENDING_BLOCK`, `BLOCKED`
 
-### Transaction item
+### TransactionDto
 ```json
 {
-  "id": "4c7f7111-d60f-4f73-912a-c3a82be6f4f0",
+  "id": "uuid",
+  "accountId": "uuid",
+  "accountName": "Everyday Account",
+  "createdAt": "2026-04-10T10:00:00Z",
   "type": "TRANSFER",
-  "title": "Rent",
-  "amount": 1200.00,
-  "currency": "PLN",
+  "title": "Transfer to Bob",
+  "description": "For invoice",
+  "amount": 250.00,
+  "currency": "EUR",
+  "direction": "DEBIT",
   "status": "COMPLETED",
-  "createdAt": "2026-03-28T10:00:00Z"
+  "counterparty": "Bob Smith",
+  "reference": "TXN-ABCD1234"
 }
 ```
 
+### OperationRecordDto
+```json
+{
+  "id": "uuid",
+  "createdAt": "2026-04-10T10:00:00Z",
+  "actorName": "Alice Murphy",
+  "actorRole": "CUSTOMER",
+  "target": "PL10105000997603123456789123",
+  "type": "TRANSFER_CREATED",
+  "severity": "INFO",
+  "description": "Transfer of 250.00 EUR to Bob Smith"
+}
+```
+
+### BlockRequestDto
+```json
+{
+  "id": "uuid",
+  "userId": "uuid",
+  "accountId": "uuid",
+  "customerName": "Brian Walsh",
+  "customerEmail": "brian@bank.local",
+  "accountNumber": "PL30105000997603123456789789",
+  "reason": "Card may be compromised",
+  "requestedAt": "2026-04-10T10:00:00Z",
+  "status": "PENDING"
+}
+```
+
+### ActionResponse
+```json
+{ "message": "Transfer completed successfully." }
+```
+
+### DownloadFileResponse
+```json
+{
+  "fileName": "statement-PL10105000997603123456789123.csv",
+  "mimeType": "text/csv;charset=utf-8",
+  "content": "Date,Title,...\n..."
+}
+```
+
+---
+
 ## Endpoints
 
-### Public
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `POST /api/auth/verify-otp`
-- `GET /api/health`
+### Public (no auth)
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/auth/register` | Register new customer (201) |
+| POST | `/api/auth/login` | Step 1: validate credentials, get OTP session |
+| POST | `/api/auth/verify-otp` | Step 2: validate OTP, get JWT |
+| GET | `/api/health` | Health check |
 
-### Authenticated
-- `GET /api/me`
+### Authenticated (any valid JWT)
+| Method | Path | Response | Description |
+|--------|------|----------|-------------|
+| GET | `/api/me` | `UserDto` | Current user profile |
 
-### Customer
-- `GET /api/customer/accounts`
-- `GET /api/customer/accounts/{accountId}/transactions`
-- `POST /api/customer/transfers`
-- `POST /api/customer/block-request`
+### Customer endpoints (requires `CUSTOMER` role)
+| Method | Path | Request / Response | Description |
+|--------|------|--------------------|-------------|
+| GET | `/api/customer/overview` | → `CustomerOverviewResponse` | Dashboard |
+| GET | `/api/customer/accounts` | → `{items: AccountSummary[]}` | All accounts |
+| GET | `/api/customer/activity` | → `{accounts: [], items: TransactionDto[]}` | Transaction history |
+| POST | `/api/customer/transfers` | `TransferRequest` → `ActionResponse` | Create transfer |
+| POST | `/api/customer/payments` | `PaymentRequest` → `ActionResponse` | Create payment |
+| POST | `/api/customer/accounts/{accountId}/request-block` | `{reason}` → `ActionResponse` | Request account block |
+| GET | `/api/customer/downloads/statement?accountId={uuid}` | → `DownloadFileResponse` | Download statement CSV |
+| GET | `/api/customer/downloads/history?accountId={uuid}` | → `DownloadFileResponse` | Download history CSV |
 
-### Employee/Admin
-- `GET /api/employees/customers/{customerId}/operations`
-- `PATCH /api/employees/customers/{customerId}/block`
-- `PATCH /api/employees/customers/{customerId}/unlock`
+**TransferRequest:**
+```json
+{
+  "sourceAccountId": "uuid",
+  "recipientName": "Jan Kowalski",
+  "recipientAccountNumber": "PL...",
+  "amount": 100.00,
+  "description": "Za fakturę"
+}
+```
 
-### Admin only
-- `POST /api/admin/employees`
+**PaymentRequest:**
+```json
+{
+  "sourceAccountId": "uuid",
+  "payeeName": "Electric Company",
+  "reference": "INV-2025-04",
+  "amount": 75.50
+}
+```
+
+**CustomerOverviewResponse:**
+```json
+{
+  "user": { ...UserDto },
+  "totalBalance": 24665.18,
+  "activeAccounts": 2,
+  "pendingBlockRequests": 0,
+  "accounts": [ ...AccountSummary[] ],
+  "recentTransactions": [ ...TransactionDto[] ],
+  "alerts": []
+}
+```
+
+### Admin endpoints (requires `ADMIN` role)
+| Method | Path | Response | Description |
+|--------|------|----------|-------------|
+| GET | `/api/admin/dashboard` | `AdminDashboardResponse` | Statistics overview |
+| GET | `/api/admin/customers` | `{items: AdminCustomerSummary[]}` | All customers |
+| GET | `/api/admin/operations` | `{items: OperationRecordDto[]}` | Audit log |
+| GET | `/api/admin/security` | `AdminSecurityResponse` | Security queue |
+| POST | `/api/admin/users/{userId}/unlock-access` | `ActionResponse` | Restore user access |
+| POST | `/api/admin/accounts/{accountId}/block` | `ActionResponse` | Block account |
+| POST | `/api/admin/accounts/{accountId}/unblock` | `ActionResponse` | Unblock account |
+| POST | `/api/admin/block-requests/{requestId}/approve` | `ActionResponse` | Approve block request |
+| POST | `/api/admin/block-requests/{requestId}/reject` | `ActionResponse` | Reject block request |
+
+**AdminDashboardResponse:**
+```json
+{
+  "totalCustomers": 3,
+  "totalFunds": 26855.58,
+  "blockedUsers": 1,
+  "blockedAccounts": 0,
+  "pendingBlockRequests": 1,
+  "recentCriticalOperations": [ ...OperationRecordDto[] ]
+}
+```
+
+**AdminSecurityResponse:**
+```json
+{
+  "blockedUsers": [ ...AdminCustomerSummary[] ],
+  "pendingRequests": [ ...BlockRequestDto[] ],
+  "blockedAccounts": [
+    { "accountId": "uuid", "accountName": "...", "accountNumber": "...", "customerName": "..." }
+  ]
+}
+```
 
 ## Frontend assumptions
-- all protected requests include bearer token
-- 401 means redirect to login
-- 403 means show not authorized page
-- `account_locked` type situations return 423 Locked or 403 with message
-- transaction lists are displayed newest first
+- All protected requests include `Authorization: Bearer <token>` header
+- `401` → redirect to login page
+- `403` → show not authorized page
+- `423` → account or user locked — show appropriate message
+- Transaction lists are displayed newest first
+- JWT token expiry: 1 hour

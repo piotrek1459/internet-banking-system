@@ -18,6 +18,15 @@ public class BankAccount {
     @Column(nullable = false, unique = true)
     private String accountNumber;
 
+    @Column(nullable = false, unique = true)
+    private String iban;
+
+    @Column(nullable = false)
+    private String name;
+
+    @Column(nullable = false)
+    private String type;
+
     @ManyToOne(optional = false)
     private User owner;
 
@@ -27,8 +36,9 @@ public class BankAccount {
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal balance;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String status;
+    private BankAccountStatus status;
 
     @Column(nullable = false)
     private Instant createdAt;
@@ -37,7 +47,7 @@ public class BankAccount {
     void onCreate() {
         if (createdAt == null) createdAt = Instant.now();
         if (balance == null) balance = BigDecimal.ZERO;
-        if (currency == null) currency = "PLN";
-        if (status == null) status = "ACTIVE";
+        if (currency == null) currency = "EUR";
+        if (status == null) status = BankAccountStatus.ACTIVE;
     }
 }

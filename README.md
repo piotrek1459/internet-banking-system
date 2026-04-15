@@ -1,32 +1,89 @@
-# Internet Banking Starter
+# Internet Banking System
 
-Minimal starter repository for a local Internet Banking System using:
-- React + TypeScript + Vite
-- Java 21 + Spring Boot 3
-- PostgreSQL
-- Docker Compose
+A full-stack internet banking application built with React + TypeScript (frontend) and Java 21 + Spring Boot 3 (backend).
 
-## Included
-- minimal role-aware frontend shell
-- minimal Spring Boot REST API skeleton
-- seed-ready admin bootstrap via env vars
-- API contract for frontend/backend in `docs/api-contract.md`
-- OpenAPI starter in `docs/openapi.yaml`
+**Technologies:** React 18 + TypeScript + Vite + Ant Design, Java 21 + Spring Boot 3, PostgreSQL, Docker Compose
 
-## Run locally
+## Running the application
+
+**Requirement:** Docker Desktop (with Docker Compose)
 
 ```bash
 docker compose up --build
 ```
 
-Frontend: `http://localhost:5173`
-Backend: `http://localhost:8080`
-DB: `localhost:5432`
+Once running:
 
-## Default admin bootstrap
-Set in `docker-compose.yml`:
-- email: `admin@bank.local`
-- password: `Admin123!`
+| Service | Address |
+|---------|---------|
+| Frontend | http://localhost:5173 |
+| Backend API | http://localhost:8080/api |
+| PostgreSQL | localhost:5432 |
 
-## Notes
-This is intentionally minimal. It is meant to be a clean starting point, not a production-ready banking system.
+> The first build may take a few minutes (pulling images, compiling).
+
+## Demo credentials
+
+The system automatically creates demo accounts on startup.
+
+| Email | Password | Role | Notes |
+|-------|----------|------|-------|
+| admin@bank.local | Admin123! | Administrator | Full admin access |
+| alice.customer@bank.local | Customer123! | Customer | 2 accounts, sample transactions |
+| brian.customer@bank.local | Customer123! | Customer | Account with pending block request |
+| locked.customer@bank.local | Customer123! | Customer | Access locked (3 failed login attempts) |
+
+### Login flow (2FA)
+
+1. Enter email and password on the `/login` page
+2. Retrieve the OTP code from the backend logs:
+   ```bash
+   docker compose logs backend | grep "OTP for"
+   ```
+3. Enter the 6-digit code on the `/verify-otp` page
+
+## Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| APP_JWT_SECRET | change-me-... | JWT secret (change in production!) |
+| APP_SEED_DEMO_DATA | true | `false` = disable demo data seeding |
+| APP_ADMIN_EMAIL | admin@bank.local | Bootstrap admin email |
+| APP_ADMIN_PASSWORD | Admin123! | Bootstrap admin password |
+
+## Stopping the application
+
+```bash
+docker compose down
+```
+
+To also remove the database volume:
+```bash
+docker compose down -v
+```
+
+## Project structure
+
+```
+internet-banking-system/
+├── backend/          # Spring Boot 3, Java 21
+├── frontend/         # React 18 + TypeScript + Vite
+├── docs/             # API documentation
+│   ├── api-contract.md
+│   ├── openapi.yaml
+│   └── RUNNING.md    # Detailed startup guide and curl examples
+└── docker-compose.yml
+```
+
+## API documentation
+
+- [docs/api-contract.md](docs/api-contract.md) — endpoint descriptions and DTOs
+- [docs/openapi.yaml](docs/openapi.yaml) — OpenAPI 3.0 specification
+- [docs/RUNNING.md](docs/RUNNING.md) — curl examples for every endpoint
+
+## Running backend tests
+
+```bash
+# Requires Java 21 and Maven locally, or run inside a container:
+docker compose run --rm backend mvn test
+```

@@ -1,4 +1,4 @@
-import { mockServer } from './mockServer'
+const BASE_URL = ''
 
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('token')
@@ -12,11 +12,22 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  return mockServer.request<T>(url, {
-    method: options.method ?? 'GET',
+  const response = await fetch(`${BASE_URL}${url}`, {
+    ...options,
     headers,
-    body: options.body,
   })
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({ message: response.statusText }))
+    throw Object.assign(new Error(errorBody.message || response.statusText), {
+      status: response.status,
+      body: errorBody,
+    })
+  }
+
+  // 204 No Content or empty body
+  const text = await response.text()
+  return text ? JSON.parse(text) : ({} as T)
 }
 
 export const api = {
