@@ -84,6 +84,13 @@ internet-banking-system/
 ## Running backend tests
 
 ```bash
-# Requires Java 21 and Maven locally, or run inside a container:
-docker compose run --rm backend mvn test
+mkdir -p ~/.m2 && docker run --rm \
+  -v "$(pwd)/backend:/app" \
+  -v "$HOME/.m2:/root/.m2" \
+  -w /app \
+  maven:3.9.8-eclipse-temurin-21 \
+  mvn test
 ```
+
+`mkdir -p ~/.m2` creates the Maven cache directory if it does not exist yet (required before the first run).
+Tests use an H2 in-memory database (`@ActiveProfiles("test")`) — no running PostgreSQL required.
