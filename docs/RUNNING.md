@@ -1,5 +1,29 @@
 # Running the Application & API Reference
 
+## Documentation
+
+| File | Contents |
+|---|---|
+| [architecture.md](architecture.md) | System overview, component descriptions, auth flow, data flow |
+| [security.md](security.md) | JWT, OTP, account locking, RBAC, audit log |
+| [testing.md](testing.md) | Test coverage, what each test does, known gaps |
+| [database-schema.md](database-schema.md) | Full schema, all tables and columns, ERD |
+| [api-contract.md](api-contract.md) | Request/response DTOs, error format |
+| [openapi.yaml](openapi.yaml) | OpenAPI 3.0 spec (import into Postman / Swagger UI) |
+
+---
+
+## Demo Credentials
+
+| User | Email | Password | Role |
+|---|---|---|---|
+| Admin | admin@bank.local | Admin123! | ADMIN |
+| Alice Murphy | alice.customer@bank.local | Customer123! | CUSTOMER |
+| Brian Walsh | brian.customer@bank.local | Customer123! | CUSTOMER |
+| Locked account | locked.customer@bank.local | Customer123! | CUSTOMER (locked) |
+
+---
+
 ## Requirements
 
 - Docker Desktop (with Docker Compose v2)
