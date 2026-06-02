@@ -8,7 +8,11 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "transactions")
+@Table(name = "transactions", indexes = {
+        @Index(name = "idx_transactions_owner", columnList = "owner_id"),
+        @Index(name = "idx_transactions_account", columnList = "account_id"),
+        @Index(name = "idx_transactions_created_at", columnList = "createdAt")
+})
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class Transaction {
     @Id
@@ -27,9 +31,9 @@ public class Transaction {
     @Column(nullable = false)
     private Instant createdAt;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private TransactionType type;
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "type_id")
+    private TransactionTypeEntity type;
 
     @Column(nullable = false)
     private String title;
@@ -43,13 +47,13 @@ public class Transaction {
     @Column(nullable = false)
     private String currency;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private TransactionDirection direction;
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "direction_id")
+    private TransactionDirectionEntity direction;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private TransactionStatus status;
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "status_id")
+    private TransactionStatusEntity status;
 
     @Column
     private String counterparty;
@@ -60,6 +64,5 @@ public class Transaction {
     @PrePersist
     void onCreate() {
         if (createdAt == null) createdAt = Instant.now();
-        if (status == null) status = TransactionStatus.COMPLETED;
     }
 }

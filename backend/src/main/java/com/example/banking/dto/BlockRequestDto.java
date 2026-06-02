@@ -30,7 +30,7 @@ public class BlockRequestDto {
                 .accountNumber(r.getAccount().getAccountNumber())
                 .reason(r.getReason())
                 .requestedAt(r.getRequestedAt())
-                .status(r.getStatus().name())
+                .status(r.getStatus().getCode())
                 .build();
     }
 }

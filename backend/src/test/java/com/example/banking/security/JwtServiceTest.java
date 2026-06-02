@@ -1,8 +1,6 @@
 package com.example.banking.security;
 
-import com.example.banking.model.AccountStatus;
-import com.example.banking.model.Role;
-import com.example.banking.model.User;
+import com.example.banking.model.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -21,8 +19,8 @@ class JwtServiceTest {
         testUser = User.builder()
                 .id(UUID.randomUUID())
                 .email("test@bank.local")
-                .role(Role.CUSTOMER)
-                .accountStatus(AccountStatus.ACTIVE)
+                .role(RoleEntity.builder().code(Role.CUSTOMER.name()).label("Customer").build())
+                .accountStatus(AccountStatusEntity.builder().code(AccountStatus.ACTIVE.name()).label("Active").build())
                 .firstName("Test")
                 .lastName("User")
                 .failedLoginAttempts(0)

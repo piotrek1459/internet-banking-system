@@ -7,5 +7,5 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface OtpSessionRepository extends JpaRepository<OtpSession, UUID> {
-    Optional<OtpSession> findByIdAndUsedFalse(UUID id);
+    Optional<OtpSession> findByIdAndStatus(UUID id, String status);
 }

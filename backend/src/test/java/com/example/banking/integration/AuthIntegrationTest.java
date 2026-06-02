@@ -1,9 +1,9 @@
 package com.example.banking.integration;
 
-import com.example.banking.model.AccountStatus;
-import com.example.banking.model.Role;
-import com.example.banking.model.User;
+import com.example.banking.model.*;
+import com.example.banking.repository.AccountStatusEntityRepository;
 import com.example.banking.repository.OtpSessionRepository;
+import com.example.banking.repository.RoleEntityRepository;
 import com.example.banking.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +28,20 @@ class AuthIntegrationTest {
     @Autowired UserRepository userRepository;
     @Autowired OtpSessionRepository otpSessionRepository;
     @Autowired PasswordEncoder passwordEncoder;
+    @Autowired RoleEntityRepository roleEntityRepository;
+    @Autowired AccountStatusEntityRepository accountStatusEntityRepository;
+
+    private RoleEntity customerRole() {
+        return roleEntityRepository.findByCode(Role.CUSTOMER.name()).orElseThrow();
+    }
+
+    private AccountStatusEntity activeStatus() {
+        return accountStatusEntityRepository.findByCode(AccountStatus.ACTIVE.name()).orElseThrow();
+    }
+
+    private AccountStatusEntity lockedStatus() {
+        return accountStatusEntityRepository.findByCode(AccountStatus.LOCKED_LOGIN_FAILURE.name()).orElseThrow();
+    }
 
     @Test
     void register_returns201() throws Exception {
@@ -57,8 +71,8 @@ class AuthIntegrationTest {
                 .passwordHash(passwordEncoder.encode("CorrectPassword123!"))
                 .firstName("Test")
                 .lastName("User")
-                .role(Role.CUSTOMER)
-                .accountStatus(AccountStatus.ACTIVE)
+                .role(customerRole())
+                .accountStatus(activeStatus())
                 .failedLoginAttempts(0)
                 .enabled(true)
                 .build());
@@ -78,8 +92,8 @@ class AuthIntegrationTest {
                 .passwordHash(passwordEncoder.encode("Password123!"))
                 .firstName("Blocked")
                 .lastName("User")
-                .role(Role.CUSTOMER)
-                .accountStatus(AccountStatus.LOCKED_LOGIN_FAILURE)
+                .role(customerRole())
+                .accountStatus(lockedStatus())
                 .failedLoginAttempts(3)
                 .enabled(true)
                 .build());

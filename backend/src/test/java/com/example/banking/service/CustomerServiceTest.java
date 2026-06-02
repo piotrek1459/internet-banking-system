@@ -4,25 +4,21 @@ import com.example.banking.dto.BlockRequestSubmitRequest;
 import com.example.banking.dto.PaymentRequest;
 import com.example.banking.dto.TransferRequest;
 import com.example.banking.model.*;
-import com.example.banking.repository.BankAccountRepository;
-import com.example.banking.repository.BlockRequestRepository;
-import com.example.banking.repository.TransactionRepository;
+import com.example.banking.repository.*;
 import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -32,23 +28,51 @@ class CustomerServiceTest {
     @Mock TransactionRepository transactionRepository;
     @Mock BlockRequestRepository blockRequestRepository;
     @Mock OperationService operationService;
+    @Mock BankAccountStatusEntityRepository bankAccountStatusEntityRepository;
+    @Mock TransactionTypeEntityRepository transactionTypeEntityRepository;
+    @Mock TransactionDirectionEntityRepository transactionDirectionEntityRepository;
+    @Mock TransactionStatusEntityRepository transactionStatusEntityRepository;
+    @Mock BlockRequestStatusEntityRepository blockRequestStatusEntityRepository;
 
     private CustomerService customerService;
     private User customer;
     private BankAccount activeAccount;
 
+    private static BankAccountStatusEntity bankAccountStatusEntity(BankAccountStatus s) {
+        return BankAccountStatusEntity.builder().code(s.name()).label(s.name()).build();
+    }
+
+    private static BlockRequestStatusEntity blockRequestStatusEntity(BlockRequestStatus s) {
+        return BlockRequestStatusEntity.builder().code(s.name()).label(s.name()).build();
+    }
+
+    private static TransactionTypeEntity transactionTypeEntity(TransactionType t) {
+        return TransactionTypeEntity.builder().code(t.name()).label(t.name()).build();
+    }
+
+    private static TransactionDirectionEntity transactionDirectionEntity(TransactionDirection d) {
+        return TransactionDirectionEntity.builder().code(d.name()).label(d.name()).build();
+    }
+
+    private static TransactionStatusEntity transactionStatusEntity(TransactionStatus s) {
+        return TransactionStatusEntity.builder().code(s.name()).label(s.name()).build();
+    }
+
     @BeforeEach
     void setUp() {
         customerService = new CustomerService(bankAccountRepository, transactionRepository,
-                blockRequestRepository, operationService);
+                blockRequestRepository, operationService,
+                bankAccountStatusEntityRepository, transactionTypeEntityRepository,
+                transactionDirectionEntityRepository, transactionStatusEntityRepository,
+                blockRequestStatusEntityRepository);
 
         customer = User.builder()
                 .id(UUID.randomUUID())
                 .email("alice@bank.local")
                 .firstName("Alice")
                 .lastName("Murphy")
-                .role(Role.CUSTOMER)
-                .accountStatus(AccountStatus.ACTIVE)
+                .role(RoleEntity.builder().code(Role.CUSTOMER.name()).label("Customer").build())
+                .accountStatus(AccountStatusEntity.builder().code(AccountStatus.ACTIVE.name()).label("Active").build())
                 .failedLoginAttempts(0)
                 .enabled(true)
                 .build();
@@ -62,7 +86,7 @@ class CustomerServiceTest {
                 .owner(customer)
                 .currency("EUR")
                 .balance(new BigDecimal("1000.00"))
-                .status(BankAccountStatus.ACTIVE)
+                .status(bankAccountStatusEntity(BankAccountStatus.ACTIVE))
                 .build();
     }
 
@@ -99,7 +123,7 @@ class CustomerServiceTest {
 
     @Test
     void submitTransfer_throwsWhenAccountNotActive() {
-        activeAccount.setStatus(BankAccountStatus.BLOCKED);
+        activeAccount.setStatus(bankAccountStatusEntity(BankAccountStatus.BLOCKED));
         when(bankAccountRepository.findByIdAndOwner(any(), any())).thenReturn(Optional.of(activeAccount));
 
         TransferRequest req = new TransferRequest();
@@ -120,6 +144,9 @@ class CustomerServiceTest {
         when(bankAccountRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(bankAccountRepository.findByAccountNumber(anyString())).thenReturn(Optional.empty());
+        when(transactionTypeEntityRepository.findByCode(anyString())).thenReturn(Optional.of(transactionTypeEntity(TransactionType.TRANSFER)));
+        when(transactionDirectionEntityRepository.findByCode(anyString())).thenReturn(Optional.of(transactionDirectionEntity(TransactionDirection.DEBIT)));
+        when(transactionStatusEntityRepository.findByCode(anyString())).thenReturn(Optional.of(transactionStatusEntity(TransactionStatus.COMPLETED)));
 
         TransferRequest req = new TransferRequest();
         req.setSourceAccountId(activeAccount.getId());
@@ -144,13 +171,17 @@ class CustomerServiceTest {
                 .owner(customer)
                 .currency("EUR")
                 .balance(new BigDecimal("500.00"))
-                .status(BankAccountStatus.ACTIVE)
+                .status(bankAccountStatusEntity(BankAccountStatus.ACTIVE))
                 .build();
 
         when(bankAccountRepository.findByIdAndOwner(any(), any())).thenReturn(Optional.of(activeAccount));
         when(bankAccountRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(bankAccountRepository.findByAccountNumber("INTERNAL-ACC")).thenReturn(Optional.of(target));
+        when(transactionTypeEntityRepository.findByCode(anyString())).thenReturn(Optional.of(transactionTypeEntity(TransactionType.TRANSFER)));
+        when(transactionDirectionEntityRepository.findByCode(TransactionDirection.DEBIT.name())).thenReturn(Optional.of(transactionDirectionEntity(TransactionDirection.DEBIT)));
+        when(transactionDirectionEntityRepository.findByCode(TransactionDirection.CREDIT.name())).thenReturn(Optional.of(transactionDirectionEntity(TransactionDirection.CREDIT)));
+        when(transactionStatusEntityRepository.findByCode(anyString())).thenReturn(Optional.of(transactionStatusEntity(TransactionStatus.COMPLETED)));
 
         TransferRequest req = new TransferRequest();
         req.setSourceAccountId(activeAccount.getId());
@@ -182,23 +213,30 @@ class CustomerServiceTest {
 
     @Test
     void requestBlock_setsAccountToPendingBlock() {
+        BlockRequestStatusEntity pendingStatus = blockRequestStatusEntity(BlockRequestStatus.PENDING);
+        BankAccountStatusEntity pendingBlockStatus = bankAccountStatusEntity(BankAccountStatus.PENDING_BLOCK);
+
         when(bankAccountRepository.findByIdAndOwner(any(), any())).thenReturn(Optional.of(activeAccount));
         when(bankAccountRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(blockRequestRepository.findByAccountAndStatus(any(), any())).thenReturn(Optional.empty());
         when(blockRequestRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(blockRequestStatusEntityRepository.findByCode(BlockRequestStatus.PENDING.name())).thenReturn(Optional.of(pendingStatus));
+        when(bankAccountStatusEntityRepository.findByCode(BankAccountStatus.PENDING_BLOCK.name())).thenReturn(Optional.of(pendingBlockStatus));
 
         BlockRequestSubmitRequest req = new BlockRequestSubmitRequest();
         req.setReason("Suspicious activity");
 
         customerService.requestBlock(customer, activeAccount.getId(), req);
 
-        assertThat(activeAccount.getStatus()).isEqualTo(BankAccountStatus.PENDING_BLOCK);
+        assertThat(activeAccount.getStatus().getCode()).isEqualTo(BankAccountStatus.PENDING_BLOCK.name());
         verify(blockRequestRepository).save(any(BlockRequest.class));
     }
 
     @Test
     void requestBlock_throwsWhenAlreadyPending() {
+        BlockRequestStatusEntity pendingStatus = blockRequestStatusEntity(BlockRequestStatus.PENDING);
         when(bankAccountRepository.findByIdAndOwner(any(), any())).thenReturn(Optional.of(activeAccount));
+        when(blockRequestStatusEntityRepository.findByCode(BlockRequestStatus.PENDING.name())).thenReturn(Optional.of(pendingStatus));
         when(blockRequestRepository.findByAccountAndStatus(any(), any()))
                 .thenReturn(Optional.of(new BlockRequest()));
 

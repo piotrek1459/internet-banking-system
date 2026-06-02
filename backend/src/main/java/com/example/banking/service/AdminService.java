@@ -20,19 +20,32 @@ public class AdminService {
     private final BlockRequestRepository blockRequestRepository;
     private final OperationRecordRepository operationRecordRepository;
     private final OperationService operationService;
+    private final RoleEntityRepository roleEntityRepository;
+    private final AccountStatusEntityRepository accountStatusEntityRepository;
+    private final BankAccountStatusEntityRepository bankAccountStatusEntityRepository;
+    private final BlockRequestStatusEntityRepository blockRequestStatusEntityRepository;
+    private final OperationSeverityEntityRepository operationSeverityEntityRepository;
 
     public AdminDashboardResponse getDashboard() {
-        long totalCustomers = userRepository.countByRole(Role.CUSTOMER);
+        RoleEntity customerRole = roleEntityRepository.findByCode(Role.CUSTOMER.name()).orElseThrow();
+        BankAccountStatusEntity blockedAccountStatus = bankAccountStatusEntityRepository.findByCode(BankAccountStatus.BLOCKED.name()).orElseThrow();
+        BlockRequestStatusEntity pendingRequestStatus = blockRequestStatusEntityRepository.findByCode(BlockRequestStatus.PENDING.name()).orElseThrow();
+
+        long totalCustomers = userRepository.countByRole(customerRole);
         java.math.BigDecimal totalFunds = bankAccountRepository.sumAllBalances();
-        long blockedUsers = userRepository.countByAccountStatus(AccountStatus.LOCKED_LOGIN_FAILURE)
-                + userRepository.countByAccountStatus(AccountStatus.BLOCKED_BY_BANK)
-                + userRepository.countByAccountStatus(AccountStatus.BLOCKED_BY_CUSTOMER_REQUEST);
-        long blockedAccounts = bankAccountRepository.countByStatus(BankAccountStatus.BLOCKED);
-        long pendingBlockRequests = blockRequestRepository.countByStatus(BlockRequestStatus.PENDING);
+        long blockedUsers =
+                userRepository.countByAccountStatus(accountStatusEntityRepository.findByCode(AccountStatus.LOCKED_LOGIN_FAILURE.name()).orElseThrow())
+                + userRepository.countByAccountStatus(accountStatusEntityRepository.findByCode(AccountStatus.BLOCKED_BY_BANK.name()).orElseThrow())
+                + userRepository.countByAccountStatus(accountStatusEntityRepository.findByCode(AccountStatus.BLOCKED_BY_CUSTOMER_REQUEST.name()).orElseThrow());
+        long blockedAccounts = bankAccountRepository.countByStatus(blockedAccountStatus);
+        long pendingBlockRequests = blockRequestRepository.countByStatus(pendingRequestStatus);
 
         List<OperationRecordDto> recentCritical = operationRecordRepository
                 .findTop6BySeverityInOrderByCreatedAtDesc(
-                        List.of(OperationSeverity.CRITICAL, OperationSeverity.WARNING))
+                        List.of(
+                                operationSeverityEntityRepository.findByCode(OperationSeverity.CRITICAL.name()).orElseThrow(),
+                                operationSeverityEntityRepository.findByCode(OperationSeverity.WARNING.name()).orElseThrow()
+                        ))
                 .stream().map(OperationRecordDto::from).toList();
 
         return AdminDashboardResponse.builder()
@@ -46,12 +59,16 @@ public class AdminService {
     }
 
     public List<AdminCustomerSummary> getCustomers() {
-        return userRepository.findByRole(Role.CUSTOMER).stream().map(user -> {
+        RoleEntity customerRole = roleEntityRepository.findByCode(Role.CUSTOMER.name()).orElseThrow();
+        BlockRequestStatusEntity pendingStatus = blockRequestStatusEntityRepository.findByCode(BlockRequestStatus.PENDING.name()).orElseThrow();
+        BankAccountStatusEntity blockedStatus = bankAccountStatusEntityRepository.findByCode(BankAccountStatus.BLOCKED.name()).orElseThrow();
+
+        return userRepository.findByRole(customerRole).stream().map(user -> {
             List<BankAccount> accounts = bankAccountRepository.findByOwner(user);
             List<AccountSummaryDto> accountDtos = accounts.stream().map(AccountSummaryDto::from).toList();
             long blockedAccounts = accounts.stream()
-                    .filter(a -> a.getStatus() == BankAccountStatus.BLOCKED).count();
-            long pendingRequests = blockRequestRepository.countByUserAndStatus(user, BlockRequestStatus.PENDING);
+                    .filter(a -> a.getStatus().is(BankAccountStatus.BLOCKED)).count();
+            long pendingRequests = blockRequestRepository.countByUserAndStatus(user, pendingStatus);
             return AdminCustomerSummary.from(user, accountDtos, blockedAccounts, pendingRequests);
         }).toList();
     }
@@ -62,26 +79,28 @@ public class AdminService {
     }
 
     public AdminSecurityResponse getSecurity() {
-        // Blocked users
-        List<AdminCustomerSummary> blockedUsers = userRepository.findByRole(Role.CUSTOMER).stream()
-                .filter(u -> u.getAccountStatus() != AccountStatus.ACTIVE)
+        RoleEntity customerRole = roleEntityRepository.findByCode(Role.CUSTOMER.name()).orElseThrow();
+        AccountStatusEntity activeStatus = accountStatusEntityRepository.findByCode(AccountStatus.ACTIVE.name()).orElseThrow();
+        BlockRequestStatusEntity pendingRequestStatus = blockRequestStatusEntityRepository.findByCode(BlockRequestStatus.PENDING.name()).orElseThrow();
+        BankAccountStatusEntity blockedAccountStatus = bankAccountStatusEntityRepository.findByCode(BankAccountStatus.BLOCKED.name()).orElseThrow();
+
+        List<AdminCustomerSummary> blockedUsers = userRepository.findByRole(customerRole).stream()
+                .filter(u -> !u.getAccountStatus().is(AccountStatus.ACTIVE))
                 .map(user -> {
                     List<BankAccount> accounts = bankAccountRepository.findByOwner(user);
                     List<AccountSummaryDto> accountDtos = accounts.stream().map(AccountSummaryDto::from).toList();
                     long blockedAccounts = accounts.stream()
-                            .filter(a -> a.getStatus() == BankAccountStatus.BLOCKED).count();
-                    long pendingRequests = blockRequestRepository.countByUserAndStatus(user, BlockRequestStatus.PENDING);
+                            .filter(a -> a.getStatus().is(BankAccountStatus.BLOCKED)).count();
+                    long pendingRequests = blockRequestRepository.countByUserAndStatus(user, pendingRequestStatus);
                     return AdminCustomerSummary.from(user, accountDtos, blockedAccounts, pendingRequests);
                 }).toList();
 
-        // Pending block requests
         List<BlockRequestDto> pendingRequests = blockRequestRepository
-                .findByStatus(BlockRequestStatus.PENDING)
+                .findByStatus(pendingRequestStatus)
                 .stream().map(BlockRequestDto::from).toList();
 
-        // Blocked accounts
         List<AdminSecurityResponse.BlockedAccountEntry> blockedAccounts = bankAccountRepository
-                .findByStatus(BankAccountStatus.BLOCKED)
+                .findByStatus(blockedAccountStatus)
                 .stream().map(a -> new AdminSecurityResponse.BlockedAccountEntry(
                         a.getId(),
                         a.getName(),
@@ -101,7 +120,8 @@ public class AdminService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found"));
 
-        user.setAccountStatus(AccountStatus.ACTIVE);
+        AccountStatusEntity activeStatus = accountStatusEntityRepository.findByCode(AccountStatus.ACTIVE.name()).orElseThrow();
+        user.setAccountStatus(activeStatus);
         user.setFailedLoginAttempts(0);
         userRepository.save(user);
 
@@ -118,13 +138,16 @@ public class AdminService {
         BankAccount account = bankAccountRepository.findById(accountId)
                 .orElseThrow(() -> new EntityNotFoundException("Account not found"));
 
-        account.setStatus(BankAccountStatus.BLOCKED);
+        BankAccountStatusEntity blockedStatus = bankAccountStatusEntityRepository.findByCode(BankAccountStatus.BLOCKED.name()).orElseThrow();
+        BlockRequestStatusEntity pendingStatus = blockRequestStatusEntityRepository.findByCode(BlockRequestStatus.PENDING.name()).orElseThrow();
+        BlockRequestStatusEntity approvedStatus = blockRequestStatusEntityRepository.findByCode(BlockRequestStatus.APPROVED.name()).orElseThrow();
+
+        account.setStatus(blockedStatus);
         bankAccountRepository.save(account);
 
-        // Auto-approve any pending block request for this account
-        blockRequestRepository.findByAccountAndStatus(account, BlockRequestStatus.PENDING)
+        blockRequestRepository.findByAccountAndStatus(account, pendingStatus)
                 .ifPresent(br -> {
-                    br.setStatus(BlockRequestStatus.APPROVED);
+                    br.setStatus(approvedStatus);
                     blockRequestRepository.save(br);
                 });
 
@@ -142,7 +165,8 @@ public class AdminService {
         BankAccount account = bankAccountRepository.findById(accountId)
                 .orElseThrow(() -> new EntityNotFoundException("Account not found"));
 
-        account.setStatus(BankAccountStatus.ACTIVE);
+        BankAccountStatusEntity activeStatus = bankAccountStatusEntityRepository.findByCode(BankAccountStatus.ACTIVE.name()).orElseThrow();
+        account.setStatus(activeStatus);
         bankAccountRepository.save(account);
 
         operationService.record(admin.getEmail(), Role.ADMIN,
@@ -158,15 +182,18 @@ public class AdminService {
         BlockRequest request = blockRequestRepository.findById(requestId)
                 .orElseThrow(() -> new EntityNotFoundException("Block request not found"));
 
-        if (request.getStatus() != BlockRequestStatus.PENDING) {
+        BlockRequestStatusEntity pendingStatus = blockRequestStatusEntityRepository.findByCode(BlockRequestStatus.PENDING.name()).orElseThrow();
+        if (!request.getStatus().is(BlockRequestStatus.PENDING)) {
             throw new IllegalStateException("Block request is not in PENDING state");
         }
 
-        request.setStatus(BlockRequestStatus.APPROVED);
+        BlockRequestStatusEntity approvedStatus = blockRequestStatusEntityRepository.findByCode(BlockRequestStatus.APPROVED.name()).orElseThrow();
+        request.setStatus(approvedStatus);
         blockRequestRepository.save(request);
 
         BankAccount account = request.getAccount();
-        account.setStatus(BankAccountStatus.BLOCKED);
+        BankAccountStatusEntity blockedStatus = bankAccountStatusEntityRepository.findByCode(BankAccountStatus.BLOCKED.name()).orElseThrow();
+        account.setStatus(blockedStatus);
         bankAccountRepository.save(account);
 
         operationService.record(admin.getEmail(), Role.ADMIN,
@@ -182,16 +209,18 @@ public class AdminService {
         BlockRequest request = blockRequestRepository.findById(requestId)
                 .orElseThrow(() -> new EntityNotFoundException("Block request not found"));
 
-        if (request.getStatus() != BlockRequestStatus.PENDING) {
+        if (!request.getStatus().is(BlockRequestStatus.PENDING)) {
             throw new IllegalStateException("Block request is not in PENDING state");
         }
 
-        request.setStatus(BlockRequestStatus.REJECTED);
+        BlockRequestStatusEntity rejectedStatus = blockRequestStatusEntityRepository.findByCode(BlockRequestStatus.REJECTED.name()).orElseThrow();
+        request.setStatus(rejectedStatus);
         blockRequestRepository.save(request);
 
         BankAccount account = request.getAccount();
-        if (account.getStatus() == BankAccountStatus.PENDING_BLOCK) {
-            account.setStatus(BankAccountStatus.ACTIVE);
+        if (account.getStatus().is(BankAccountStatus.PENDING_BLOCK)) {
+            BankAccountStatusEntity activeStatus = bankAccountStatusEntityRepository.findByCode(BankAccountStatus.ACTIVE.name()).orElseThrow();
+            account.setStatus(activeStatus);
             bankAccountRepository.save(account);
         }
 

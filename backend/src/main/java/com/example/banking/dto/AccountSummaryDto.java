@@ -28,7 +28,7 @@ public class AccountSummaryDto {
                 .iban(account.getIban())
                 .currency(account.getCurrency())
                 .balance(account.getBalance())
-                .status(account.getStatus().name())
+                .status(account.getStatus().getCode())
                 .build();
     }
 }

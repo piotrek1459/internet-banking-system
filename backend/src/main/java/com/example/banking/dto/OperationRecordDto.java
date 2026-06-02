@@ -30,10 +30,10 @@ public class OperationRecordDto {
                 .id(r.getId())
                 .createdAt(r.getCreatedAt())
                 .actorName(actorName)
-                .actorRole(r.getActorRole().name())
+                .actorRole(r.getActorRole().getCode())
                 .target(r.getTarget())
-                .type(r.getType().name())
-                .severity(r.getSeverity().name())
+                .type(r.getType().getCode())
+                .severity(r.getSeverity().getCode())
                 .description(r.getDescription())
                 .build();
     }

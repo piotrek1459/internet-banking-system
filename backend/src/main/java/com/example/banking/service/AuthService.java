@@ -2,9 +2,7 @@ package com.example.banking.service;
 
 import com.example.banking.dto.*;
 import com.example.banking.model.*;
-import com.example.banking.repository.BankAccountRepository;
-import com.example.banking.repository.OtpSessionRepository;
-import com.example.banking.repository.UserRepository;
+import com.example.banking.repository.*;
 import com.example.banking.security.JwtService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +27,9 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final OperationService operationService;
+    private final RoleEntityRepository roleEntityRepository;
+    private final AccountStatusEntityRepository accountStatusEntityRepository;
+    private final BankAccountStatusEntityRepository bankAccountStatusEntityRepository;
 
     @Transactional
     public void register(RegisterRequest request) {
@@ -36,13 +37,17 @@ public class AuthService {
             throw new IllegalArgumentException("Email already registered");
         }
 
+        RoleEntity customerRole = roleEntityRepository.findByCode(Role.CUSTOMER.name()).orElseThrow();
+        AccountStatusEntity activeStatus = accountStatusEntityRepository.findByCode(AccountStatus.ACTIVE.name()).orElseThrow();
+        BankAccountStatusEntity accountActiveStatus = bankAccountStatusEntityRepository.findByCode(BankAccountStatus.ACTIVE.name()).orElseThrow();
+
         User user = User.builder()
                 .email(request.getEmail())
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .firstName(request.getFirstName())
                 .lastName(request.getLastName())
-                .role(Role.CUSTOMER)
-                .accountStatus(AccountStatus.ACTIVE)
+                .role(customerRole)
+                .accountStatus(activeStatus)
                 .failedLoginAttempts(0)
                 .enabled(true)
                 .build();
@@ -59,7 +64,7 @@ public class AuthService {
                 .owner(user)
                 .currency("EUR")
                 .balance(BigDecimal.ZERO)
-                .status(BankAccountStatus.ACTIVE)
+                .status(accountActiveStatus)
                 .build());
 
         operationService.record(user.getEmail(), Role.CUSTOMER,
@@ -73,7 +78,7 @@ public class AuthService {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new EntityNotFoundException("Invalid credentials"));
 
-        if (user.getAccountStatus() != AccountStatus.ACTIVE) {
+        if (!user.getAccountStatus().is(AccountStatus.ACTIVE)) {
             throw new IllegalStateException("Account is blocked or locked");
         }
 
@@ -83,7 +88,9 @@ public class AuthService {
 
             boolean nowLocked = attempts >= 3;
             if (nowLocked) {
-                user.setAccountStatus(AccountStatus.LOCKED_LOGIN_FAILURE);
+                AccountStatusEntity lockedStatus = accountStatusEntityRepository
+                        .findByCode(AccountStatus.LOCKED_LOGIN_FAILURE.name()).orElseThrow();
+                user.setAccountStatus(lockedStatus);
             }
             userRepository.save(user);
 
@@ -100,14 +107,15 @@ public class AuthService {
         user.setFailedLoginAttempts(0);
         userRepository.save(user);
 
-        String otp = String.format("%06d", new Random().nextInt(1_000_000));
-        log.info("[DEV] OTP for {}: {}", user.getEmail(), otp);
+        String rawOtp = String.format("%06d", new Random().nextInt(1_000_000));
+        log.info("[DEV] OTP for {}: {}", user.getEmail(), rawOtp);
 
         OtpSession session = otpSessionRepository.save(OtpSession.builder()
                 .user(user)
-                .otpCode(otp)
+                .codeHash(passwordEncoder.encode(rawOtp))
                 .expiresAt(Instant.now().plusSeconds(300))
-                .used(false)
+                .status("PENDING")
+                .attempts(0)
                 .build());
 
         return LoginResponse.builder()
@@ -119,17 +127,26 @@ public class AuthService {
 
     @Transactional
     public AuthResponse verifyOtp(VerifyOtpRequest request) {
-        OtpSession session = otpSessionRepository.findByIdAndUsedFalse(request.getOtpSessionId())
+        OtpSession session = otpSessionRepository.findByIdAndStatus(request.getOtpSessionId(), "PENDING")
                 .orElseThrow(() -> new EntityNotFoundException("OTP session not found"));
 
         if (session.getExpiresAt().isBefore(Instant.now())) {
+            session.setStatus("EXPIRED");
+            otpSessionRepository.save(session);
             throw new IllegalStateException("OTP expired");
         }
-        if (!session.getOtpCode().equals(request.getOtpCode())) {
+
+        if (!passwordEncoder.matches(request.getOtpCode(), session.getCodeHash())) {
+            int attempts = session.getAttempts() + 1;
+            session.setAttempts(attempts);
+            if (attempts >= 3) {
+                session.setStatus("EXPIRED");
+            }
+            otpSessionRepository.save(session);
             throw new IllegalArgumentException("Invalid OTP code");
         }
 
-        session.setUsed(true);
+        session.setStatus("USED");
         otpSessionRepository.save(session);
 
         User user = session.getUser();

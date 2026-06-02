@@ -36,9 +36,9 @@ public class BankAccount {
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal balance;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private BankAccountStatus status;
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "status_id")
+    private BankAccountStatusEntity status;
 
     @Column(nullable = false)
     private Instant createdAt;
@@ -48,6 +48,5 @@ public class BankAccount {
         if (createdAt == null) createdAt = Instant.now();
         if (balance == null) balance = BigDecimal.ZERO;
         if (currency == null) currency = "EUR";
-        if (status == null) status = BankAccountStatus.ACTIVE;
     }
 }

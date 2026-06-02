@@ -4,9 +4,7 @@ import com.example.banking.dto.LoginRequest;
 import com.example.banking.dto.RegisterRequest;
 import com.example.banking.dto.VerifyOtpRequest;
 import com.example.banking.model.*;
-import com.example.banking.repository.BankAccountRepository;
-import com.example.banking.repository.OtpSessionRepository;
-import com.example.banking.repository.UserRepository;
+import com.example.banking.repository.*;
 import com.example.banking.security.JwtService;
 import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,8 +22,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -36,15 +33,31 @@ class AuthServiceTest {
     @Mock BankAccountRepository bankAccountRepository;
     @Mock JwtService jwtService;
     @Mock OperationService operationService;
+    @Mock RoleEntityRepository roleEntityRepository;
+    @Mock AccountStatusEntityRepository accountStatusEntityRepository;
+    @Mock BankAccountStatusEntityRepository bankAccountStatusEntityRepository;
 
     private PasswordEncoder passwordEncoder;
     private AuthService authService;
+
+    private static RoleEntity roleEntity(Role r) {
+        return RoleEntity.builder().code(r.name()).label(r.name()).build();
+    }
+
+    private static AccountStatusEntity accountStatusEntity(AccountStatus s) {
+        return AccountStatusEntity.builder().code(s.name()).label(s.name()).build();
+    }
+
+    private static BankAccountStatusEntity bankAccountStatusEntity(BankAccountStatus s) {
+        return BankAccountStatusEntity.builder().code(s.name()).label(s.name()).build();
+    }
 
     @BeforeEach
     void setUp() {
         passwordEncoder = new BCryptPasswordEncoder();
         authService = new AuthService(userRepository, otpSessionRepository, bankAccountRepository,
-                passwordEncoder, jwtService, operationService);
+                passwordEncoder, jwtService, operationService,
+                roleEntityRepository, accountStatusEntityRepository, bankAccountStatusEntityRepository);
     }
 
     @Test
@@ -52,6 +65,9 @@ class AuthServiceTest {
         when(userRepository.findByEmail(anyString())).thenReturn(Optional.empty());
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(bankAccountRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(roleEntityRepository.findByCode(Role.CUSTOMER.name())).thenReturn(Optional.of(roleEntity(Role.CUSTOMER)));
+        when(accountStatusEntityRepository.findByCode(AccountStatus.ACTIVE.name())).thenReturn(Optional.of(accountStatusEntity(AccountStatus.ACTIVE)));
+        when(bankAccountStatusEntityRepository.findByCode(BankAccountStatus.ACTIVE.name())).thenReturn(Optional.of(bankAccountStatusEntity(BankAccountStatus.ACTIVE)));
 
         RegisterRequest req = new RegisterRequest();
         req.setEmail("new@bank.local");
@@ -98,10 +114,10 @@ class AuthServiceTest {
                 .id(UUID.randomUUID())
                 .email("blocked@bank.local")
                 .passwordHash(passwordEncoder.encode("Password123!"))
-                .accountStatus(AccountStatus.LOCKED_LOGIN_FAILURE)
+                .accountStatus(accountStatusEntity(AccountStatus.LOCKED_LOGIN_FAILURE))
                 .failedLoginAttempts(3)
                 .enabled(true)
-                .role(Role.CUSTOMER)
+                .role(roleEntity(Role.CUSTOMER))
                 .build();
         when(userRepository.findByEmail(anyString())).thenReturn(Optional.of(blocked));
 
@@ -120,10 +136,10 @@ class AuthServiceTest {
                 .id(UUID.randomUUID())
                 .email("user@bank.local")
                 .passwordHash(passwordEncoder.encode("CorrectPassword!"))
-                .accountStatus(AccountStatus.ACTIVE)
+                .accountStatus(accountStatusEntity(AccountStatus.ACTIVE))
                 .failedLoginAttempts(0)
                 .enabled(true)
-                .role(Role.CUSTOMER)
+                .role(roleEntity(Role.CUSTOMER))
                 .build();
         when(userRepository.findByEmail(anyString())).thenReturn(Optional.of(user));
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -146,13 +162,15 @@ class AuthServiceTest {
                 .id(UUID.randomUUID())
                 .email("user@bank.local")
                 .passwordHash(passwordEncoder.encode("CorrectPassword!"))
-                .accountStatus(AccountStatus.ACTIVE)
+                .accountStatus(accountStatusEntity(AccountStatus.ACTIVE))
                 .failedLoginAttempts(2)
                 .enabled(true)
-                .role(Role.CUSTOMER)
+                .role(roleEntity(Role.CUSTOMER))
                 .build();
         when(userRepository.findByEmail(anyString())).thenReturn(Optional.of(user));
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(accountStatusEntityRepository.findByCode(AccountStatus.LOCKED_LOGIN_FAILURE.name()))
+                .thenReturn(Optional.of(accountStatusEntity(AccountStatus.LOCKED_LOGIN_FAILURE)));
 
         LoginRequest req = new LoginRequest();
         req.setEmail("user@bank.local");
@@ -163,18 +181,20 @@ class AuthServiceTest {
 
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(captor.capture());
-        assertThat(captor.getValue().getAccountStatus()).isEqualTo(AccountStatus.LOCKED_LOGIN_FAILURE);
+        assertThat(captor.getValue().getAccountStatus().getCode()).isEqualTo(AccountStatus.LOCKED_LOGIN_FAILURE.name());
     }
 
     @Test
     void verifyOtp_throwsOnExpiredSession() {
         OtpSession session = OtpSession.builder()
                 .id(UUID.randomUUID())
-                .otpCode("123456")
+                .codeHash(passwordEncoder.encode("123456"))
                 .expiresAt(Instant.now().minusSeconds(60))
-                .used(false)
+                .status("PENDING")
+                .attempts(0)
                 .build();
-        when(otpSessionRepository.findByIdAndUsedFalse(any())).thenReturn(Optional.of(session));
+        when(otpSessionRepository.findByIdAndStatus(any(), eq("PENDING"))).thenReturn(Optional.of(session));
+        when(otpSessionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         VerifyOtpRequest req = new VerifyOtpRequest();
         req.setOtpSessionId(session.getId());
@@ -189,11 +209,13 @@ class AuthServiceTest {
     void verifyOtp_throwsOnWrongCode() {
         OtpSession session = OtpSession.builder()
                 .id(UUID.randomUUID())
-                .otpCode("123456")
+                .codeHash(passwordEncoder.encode("123456"))
                 .expiresAt(Instant.now().plusSeconds(300))
-                .used(false)
+                .status("PENDING")
+                .attempts(0)
                 .build();
-        when(otpSessionRepository.findByIdAndUsedFalse(any())).thenReturn(Optional.of(session));
+        when(otpSessionRepository.findByIdAndStatus(any(), eq("PENDING"))).thenReturn(Optional.of(session));
+        when(otpSessionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         VerifyOtpRequest req = new VerifyOtpRequest();
         req.setOtpSessionId(session.getId());
@@ -202,6 +224,8 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.verifyOtp(req))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Invalid OTP");
+
+        assertThat(session.getAttempts()).isEqualTo(1);
     }
 
     @Test
@@ -210,23 +234,24 @@ class AuthServiceTest {
                 .id(UUID.randomUUID())
                 .email("user@bank.local")
                 .passwordHash(passwordEncoder.encode("Password123!"))
-                .accountStatus(AccountStatus.ACTIVE)
+                .accountStatus(accountStatusEntity(AccountStatus.ACTIVE))
                 .failedLoginAttempts(0)
                 .enabled(true)
-                .role(Role.CUSTOMER)
+                .role(roleEntity(Role.CUSTOMER))
                 .firstName("Jane")
                 .lastName("Doe")
                 .build();
 
         OtpSession session = OtpSession.builder()
                 .id(UUID.randomUUID())
-                .otpCode("654321")
+                .codeHash(passwordEncoder.encode("654321"))
                 .expiresAt(Instant.now().plusSeconds(300))
-                .used(false)
+                .status("PENDING")
+                .attempts(0)
                 .user(user)
                 .build();
 
-        when(otpSessionRepository.findByIdAndUsedFalse(any())).thenReturn(Optional.of(session));
+        when(otpSessionRepository.findByIdAndStatus(any(), eq("PENDING"))).thenReturn(Optional.of(session));
         when(otpSessionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(jwtService.generateToken(any())).thenReturn("mock.jwt.token");
@@ -241,5 +266,6 @@ class AuthServiceTest {
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(captor.capture());
         assertThat(captor.getValue().getLastLoginAt()).isNotNull();
+        assertThat(session.getStatus()).isEqualTo("USED");
     }
 }

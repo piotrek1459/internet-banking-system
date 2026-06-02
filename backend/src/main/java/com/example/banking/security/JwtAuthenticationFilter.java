@@ -46,13 +46,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String role = jwtService.extractRole(token);
 
         User user = userRepository.findByEmail(email).orElse(null);
-        if (user == null || user.getAccountStatus() != AccountStatus.ACTIVE) {
+        if (user == null || !user.getAccountStatus().is(AccountStatus.ACTIVE)) {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "User not found or access blocked");
             return;
         }
 
         UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-                user, null, List.of(new SimpleGrantedAuthority("ROLE_" + role))
+                user, null, List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().getCode()))
         );
         SecurityContextHolder.getContext().setAuthentication(auth);
         filterChain.doFilter(request, response);

@@ -1,6 +1,5 @@
 package com.example.banking.dto;
 
-import com.example.banking.model.AccountStatus;
 import com.example.banking.model.User;
 import lombok.Builder;
 import lombok.Data;
@@ -24,11 +23,11 @@ public class UserDto {
         return UserDto.builder()
                 .id(user.getId())
                 .email(user.getEmail())
-                .role(user.getRole().name())
+                .role(user.getRole().getCode())
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
                 .failedLoginAttempts(user.getFailedLoginAttempts())
-                .isAccessBlocked(user.getAccountStatus() != AccountStatus.ACTIVE)
+                .isAccessBlocked(!user.getAccountStatus().is(com.example.banking.model.AccountStatus.ACTIVE))
                 .lastLoginAt(user.getLastLoginAt())
                 .build();
     }

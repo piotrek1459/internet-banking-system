@@ -26,13 +26,13 @@ public class User {
     @Column(nullable = false)
     private String lastName;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private Role role;
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "role_id")
+    private RoleEntity role;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private AccountStatus accountStatus;
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "accountStatus_id")
+    private AccountStatusEntity accountStatus;
 
     @Column(nullable = false)
     private int failedLoginAttempts;
@@ -49,8 +49,6 @@ public class User {
     @PrePersist
     void onCreate() {
         if (createdAt == null) createdAt = Instant.now();
-        if (role == null) role = Role.CUSTOMER;
-        if (accountStatus == null) accountStatus = AccountStatus.ACTIVE;
         enabled = true;
     }
 }

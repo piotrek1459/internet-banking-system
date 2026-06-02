@@ -1,7 +1,7 @@
 package com.example.banking.repository;
 
 import com.example.banking.model.OperationRecord;
-import com.example.banking.model.OperationSeverity;
+import com.example.banking.model.OperationSeverityEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Collection;
@@ -10,5 +10,5 @@ import java.util.UUID;
 
 public interface OperationRecordRepository extends JpaRepository<OperationRecord, UUID> {
     List<OperationRecord> findAllByOrderByCreatedAtDesc();
-    List<OperationRecord> findTop6BySeverityInOrderByCreatedAtDesc(Collection<OperationSeverity> severities);
+    List<OperationRecord> findTop6BySeverityInOrderByCreatedAtDesc(Collection<OperationSeverityEntity> severities);
 }

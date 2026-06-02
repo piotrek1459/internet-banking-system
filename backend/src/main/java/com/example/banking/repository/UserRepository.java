@@ -1,7 +1,7 @@
 package com.example.banking.repository;
 
-import com.example.banking.model.AccountStatus;
-import com.example.banking.model.Role;
+import com.example.banking.model.AccountStatusEntity;
+import com.example.banking.model.RoleEntity;
 import com.example.banking.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -11,8 +11,8 @@ import java.util.UUID;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmail(String email);
-    boolean existsByRole(Role role);
-    List<User> findByRole(Role role);
-    long countByRole(Role role);
-    long countByAccountStatus(AccountStatus accountStatus);
+    boolean existsByRole(RoleEntity role);
+    List<User> findByRole(RoleEntity role);
+    long countByRole(RoleEntity role);
+    long countByAccountStatus(AccountStatusEntity accountStatus);
 }

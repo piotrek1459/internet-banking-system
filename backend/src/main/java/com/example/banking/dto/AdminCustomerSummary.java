@@ -2,6 +2,7 @@ package com.example.banking.dto;
 
 import com.example.banking.model.AccountStatus;
 import com.example.banking.model.User;
+
 import lombok.Builder;
 import lombok.Data;
 
@@ -28,7 +29,7 @@ public class AdminCustomerSummary {
                 .userId(user.getId())
                 .name(user.getFirstName() + " " + user.getLastName())
                 .email(user.getEmail())
-                .accessStatus(user.getAccountStatus() == AccountStatus.ACTIVE ? "ACTIVE" : "BLOCKED")
+                .accessStatus(user.getAccountStatus().is(AccountStatus.ACTIVE) ? "ACTIVE" : "BLOCKED")
                 .failedLoginAttempts(user.getFailedLoginAttempts())
                 .blockedAccounts(blockedAccounts)
                 .pendingBlockRequests(pendingBlockRequests)

@@ -2,9 +2,7 @@ package com.example.banking.service;
 
 import com.example.banking.dto.*;
 import com.example.banking.model.*;
-import com.example.banking.repository.BankAccountRepository;
-import com.example.banking.repository.BlockRequestRepository;
-import com.example.banking.repository.TransactionRepository;
+import com.example.banking.repository.*;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -23,6 +21,11 @@ public class CustomerService {
     private final TransactionRepository transactionRepository;
     private final BlockRequestRepository blockRequestRepository;
     private final OperationService operationService;
+    private final BankAccountStatusEntityRepository bankAccountStatusEntityRepository;
+    private final TransactionTypeEntityRepository transactionTypeEntityRepository;
+    private final TransactionDirectionEntityRepository transactionDirectionEntityRepository;
+    private final TransactionStatusEntityRepository transactionStatusEntityRepository;
+    private final BlockRequestStatusEntityRepository blockRequestStatusEntityRepository;
 
     public CustomerOverviewResponse getOverview(User user) {
         List<BankAccount> accounts = bankAccountRepository.findByOwner(user);
@@ -33,11 +36,11 @@ public class CustomerService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         long activeAccounts = accounts.stream()
-                .filter(a -> a.getStatus() == BankAccountStatus.ACTIVE)
+                .filter(a -> a.getStatus().is(BankAccountStatus.ACTIVE))
                 .count();
 
         long pendingBlockRequests = accounts.stream()
-                .filter(a -> a.getStatus() == BankAccountStatus.PENDING_BLOCK)
+                .filter(a -> a.getStatus().is(BankAccountStatus.PENDING_BLOCK))
                 .count();
 
         List<TransactionDto> recentTransactions = transactionRepository
@@ -46,9 +49,9 @@ public class CustomerService {
 
         List<String> alerts = new ArrayList<>();
         for (BankAccount account : accounts) {
-            if (account.getStatus() == BankAccountStatus.PENDING_BLOCK) {
+            if (account.getStatus().is(BankAccountStatus.PENDING_BLOCK)) {
                 alerts.add(account.getName() + " has a pending block request awaiting admin review.");
-            } else if (account.getStatus() == BankAccountStatus.BLOCKED) {
+            } else if (account.getStatus().is(BankAccountStatus.BLOCKED)) {
                 alerts.add(account.getName() + " is blocked and cannot be used for new payments.");
             }
         }
@@ -84,7 +87,7 @@ public class CustomerService {
         BankAccount source = bankAccountRepository.findByIdAndOwner(request.getSourceAccountId(), user)
                 .orElseThrow(() -> new EntityNotFoundException("Account not found"));
 
-        if (source.getStatus() != BankAccountStatus.ACTIVE) {
+        if (!source.getStatus().is(BankAccountStatus.ACTIVE)) {
             throw new IllegalStateException("Only active accounts can create transfers");
         }
         if (source.getBalance().compareTo(request.getAmount()) < 0) {
@@ -96,38 +99,42 @@ public class CustomerService {
 
         String reference = "TXN-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
+        TransactionTypeEntity transferType = transactionTypeEntityRepository.findByCode(TransactionType.TRANSFER.name()).orElseThrow();
+        TransactionDirectionEntity debitDir = transactionDirectionEntityRepository.findByCode(TransactionDirection.DEBIT.name()).orElseThrow();
+        TransactionDirectionEntity creditDir = transactionDirectionEntityRepository.findByCode(TransactionDirection.CREDIT.name()).orElseThrow();
+        TransactionStatusEntity completedStatus = transactionStatusEntityRepository.findByCode(TransactionStatus.COMPLETED.name()).orElseThrow();
+
         transactionRepository.save(Transaction.builder()
                 .owner(user)
                 .account(source)
                 .accountName(source.getName())
-                .type(TransactionType.TRANSFER)
+                .type(transferType)
                 .title("Transfer to " + request.getRecipientName())
                 .description(request.getDescription())
                 .amount(request.getAmount())
                 .currency(source.getCurrency())
-                .direction(TransactionDirection.DEBIT)
-                .status(TransactionStatus.COMPLETED)
+                .direction(debitDir)
+                .status(completedStatus)
                 .counterparty(request.getRecipientName())
                 .reference(reference)
                 .build());
 
-        // Credit target if internal account
         bankAccountRepository.findByAccountNumber(request.getRecipientAccountNumber())
                 .ifPresent(target -> {
-                    if (target.getStatus() == BankAccountStatus.ACTIVE) {
+                    if (target.getStatus().is(BankAccountStatus.ACTIVE)) {
                         target.setBalance(target.getBalance().add(request.getAmount()));
                         bankAccountRepository.save(target);
                         transactionRepository.save(Transaction.builder()
                                 .owner(target.getOwner())
                                 .account(target)
                                 .accountName(target.getName())
-                                .type(TransactionType.TRANSFER)
+                                .type(transferType)
                                 .title("Transfer from " + user.getFirstName() + " " + user.getLastName())
                                 .description(request.getDescription())
                                 .amount(request.getAmount())
                                 .currency(target.getCurrency())
-                                .direction(TransactionDirection.CREDIT)
-                                .status(TransactionStatus.COMPLETED)
+                                .direction(creditDir)
+                                .status(completedStatus)
                                 .counterparty(user.getFirstName() + " " + user.getLastName())
                                 .reference(reference)
                                 .build());
@@ -148,7 +155,7 @@ public class CustomerService {
         BankAccount source = bankAccountRepository.findByIdAndOwner(request.getSourceAccountId(), user)
                 .orElseThrow(() -> new EntityNotFoundException("Account not found"));
 
-        if (source.getStatus() != BankAccountStatus.ACTIVE) {
+        if (!source.getStatus().is(BankAccountStatus.ACTIVE)) {
             throw new IllegalStateException("Only active accounts can create payments");
         }
         if (source.getBalance().compareTo(request.getAmount()) < 0) {
@@ -164,13 +171,13 @@ public class CustomerService {
                 .owner(user)
                 .account(source)
                 .accountName(source.getName())
-                .type(TransactionType.PAYMENT)
+                .type(transactionTypeEntityRepository.findByCode(TransactionType.PAYMENT.name()).orElseThrow())
                 .title("Payment to " + request.getPayeeName())
                 .description("Ref: " + request.getReference())
                 .amount(request.getAmount())
                 .currency(source.getCurrency())
-                .direction(TransactionDirection.DEBIT)
-                .status(TransactionStatus.COMPLETED)
+                .direction(transactionDirectionEntityRepository.findByCode(TransactionDirection.DEBIT.name()).orElseThrow())
+                .status(transactionStatusEntityRepository.findByCode(TransactionStatus.COMPLETED.name()).orElseThrow())
                 .counterparty(request.getPayeeName())
                 .reference(reference)
                 .build());
@@ -189,25 +196,28 @@ public class CustomerService {
         BankAccount account = bankAccountRepository.findByIdAndOwner(accountId, user)
                 .orElseThrow(() -> new EntityNotFoundException("Account not found"));
 
-        if (account.getStatus() != BankAccountStatus.ACTIVE) {
+        if (!account.getStatus().is(BankAccountStatus.ACTIVE)) {
             throw new IllegalStateException("Only active accounts can be blocked");
         }
 
+        BlockRequestStatusEntity pendingStatus = blockRequestStatusEntityRepository.findByCode(BlockRequestStatus.PENDING.name()).orElseThrow();
+
         boolean alreadyPending = blockRequestRepository
-                .findByAccountAndStatus(account, BlockRequestStatus.PENDING)
+                .findByAccountAndStatus(account, pendingStatus)
                 .isPresent();
         if (alreadyPending) {
             throw new IllegalStateException("A block request for this account is already pending");
         }
 
-        account.setStatus(BankAccountStatus.PENDING_BLOCK);
+        BankAccountStatusEntity pendingBlockStatus = bankAccountStatusEntityRepository.findByCode(BankAccountStatus.PENDING_BLOCK.name()).orElseThrow();
+        account.setStatus(pendingBlockStatus);
         bankAccountRepository.save(account);
 
         blockRequestRepository.save(BlockRequest.builder()
                 .user(user)
                 .account(account)
                 .reason(request.getReason())
-                .status(BlockRequestStatus.PENDING)
+                .status(pendingStatus)
                 .build());
 
         operationService.record(user.getEmail(), Role.CUSTOMER,
@@ -234,8 +244,8 @@ public class CustomerService {
                         escapeCsv(t.getDescription() != null ? t.getDescription() : ""),
                         t.getAmount().toPlainString(),
                         t.getCurrency(),
-                        t.getDirection().name(),
-                        t.getStatus().name(),
+                        t.getDirection().getCode(),
+                        t.getStatus().getCode(),
                         escapeCsv(t.getCounterparty() != null ? t.getCounterparty() : ""),
                         escapeCsv(t.getReference())
                 }).toList()
@@ -271,12 +281,12 @@ public class CustomerService {
                 transactions.stream().map(t -> new String[]{
                         t.getCreatedAt().toString(),
                         escapeCsv(t.getAccountName()),
-                        t.getType().name(),
+                        t.getType().getCode(),
                         escapeCsv(t.getTitle()),
                         t.getAmount().toPlainString(),
                         t.getCurrency(),
-                        t.getDirection().name(),
-                        t.getStatus().name(),
+                        t.getDirection().getCode(),
+                        t.getStatus().getCode(),
                         escapeCsv(t.getReference())
                 }).toList()
         );
